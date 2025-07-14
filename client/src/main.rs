@@ -1,34 +1,26 @@
+use endpoints::endpoints::{Endpoint, Message};
 use std::error::Error;
-use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let socket = TcpStream::connect("127.0.0.1:8080").await?;
+    let stream = TcpStream::connect("127.0.0.1:8080").await?;
     println!("Connected to server");
 
-    let (mut reader, mut writer) = socket.into_split();
-    let stdin = BufReader::new(io::stdin());
-    let mut lines = stdin.lines();
+    let mut client_endpoint = Endpoint::from_tcp_stream(stream);
 
-    writer.write_all(b"hello from client\n").await?;
+    let message = Message {
+        content: "Hello from client".to_string(),
+    };
 
-    let read_task = tokio::spawn(async move {
-        let mut buf = vec![0u8; 1024];
-        loop {
-            let n = reader.read(&mut buf).await.unwrap_or(0);
-            if n == 0 {
-                break;
-            }
-            print!("Received: {}", String::from_utf8_lossy(&buf[..n]));
-        }
-    });
+    client_endpoint.send(message).await;
+    println!("Sent message to server");
 
-    while let Some(line) = lines.next_line().await? {
-        let data = line + "\n";
-        writer.write_all(data.as_bytes()).await?;
+    if let Some(reply) = client_endpoint.receive().await {
+        println!("Client received: {reply:?}");
+    } else {
+        println!("Server disconnected");
     }
 
-    read_task.await?;
     Ok(())
 }

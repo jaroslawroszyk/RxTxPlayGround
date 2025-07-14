@@ -1,37 +1,18 @@
+use endpoints::endpoints::{Endpoint, Message};
 use std::error::Error;
-
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-struct UppercaseEndpoint;
+async fn handle_client(stream: TcpStream) -> Result<(), Box<dyn Error>> {
+    let mut endpoint = Endpoint::from_tcp_stream(stream);
 
-impl UppercaseEndpoint {
-    fn process_in_place(buffer: &mut [u8], n: usize) {
-        for byte in &mut buffer[..n] {
-            if b'a' <= *byte && *byte <= b'z' {
-                *byte -= 32;
-            }
-        }
-    }
-}
+    while let Some(msg) = endpoint.receive().await {
+        println!("Server received: {msg:?}");
 
-async fn handle_client(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
-    let mut buf = [0u8; 1024];
+        let response = Message {
+            content: "Hi client!".to_string(),
+        };
 
-    loop {
-        let n = socket.read(&mut buf).await?;
-        if let Ok(msg) = std::str::from_utf8(&buf[..n]) {
-            println!("Received message: {msg}");
-        } else {
-            println!("Received non-UTF8 data: {:?}", &buf[..n]);
-        }
-        if n == 0 {
-            break;
-        }
-
-        UppercaseEndpoint::process_in_place(&mut buf, n);
-
-        socket.write_all(&buf[..n]).await?;
+        endpoint.send(response).await;
     }
 
     Ok(())
